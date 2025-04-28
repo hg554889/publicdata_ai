@@ -7,7 +7,7 @@ import json
 import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
-from openai import OpenAI
+import openai  # OpenAI 직접 호출
 import asyncio
 import logging
 import time
@@ -58,27 +58,23 @@ embeddings = np.array(embeddings)
 embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
 
 # OpenAI 클라이언트 설정
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 logger.info(f"모델 및 데이터 로딩 완료: {time.time() - start_time:.2f}초 소요")
-
 
 # 요청 모델
 class QueryRequest(BaseModel):
     query: str
-
 
 # 상태 확인 엔드포인트
 @app.get("/health")
 def health_check():
     return {"status": "ok", "model_loaded": model is not None}
 
-
 # 비동기 처리를 위한 함수
 async def encode_query(query_text):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, lambda: model.encode([query_text], device=device))
-
 
 @app.post("/recommend")
 async def recommend_classes(request: QueryRequest):
@@ -106,7 +102,7 @@ async def recommend_classes(request: QueryRequest):
 
         # OpenAI API 호출 (타임아웃 설정)
         response = await asyncio.wait_for(
-            client.chat.completions.acreate(
+            openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[{
                     "role": "user",
@@ -131,7 +127,7 @@ async def recommend_classes(request: QueryRequest):
         )
 
         logger.info(f"총 처리 시간: {time.time() - start_time:.2f}초")
-        return {"answer": response.choices[0].message.content}
+        return {"answer": response['choices'][0]['message']['content']}
 
     except asyncio.TimeoutError:
         logger.error("OpenAI API 호출 타임아웃")
@@ -139,7 +135,6 @@ async def recommend_classes(request: QueryRequest):
     except Exception as e:
         logger.error(f"오류 발생: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # 미들웨어 추가 - 요청 처리 시간 로깅
 @app.middleware("http")
