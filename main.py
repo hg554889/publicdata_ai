@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
 import openai  # OpenAI 직접 호출
-import asyncio
 import logging
 import time
 
@@ -71,10 +70,9 @@ class QueryRequest(BaseModel):
 def health_check():
     return {"status": "ok", "model_loaded": model is not None}
 
-# 비동기 처리를 위한 함수
-async def encode_query(query_text):
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: model.encode([query_text], device=device))
+# 쿼리 인코딩 (동기 처리)
+def encode_query(query_text):
+    return model.encode([query_text], device=device)
 
 @app.post("/recommend")
 async def recommend_classes(request: QueryRequest):
@@ -83,8 +81,8 @@ async def recommend_classes(request: QueryRequest):
     logger.info(f"요청 받음: {user_query}")
 
     try:
-        # Query embedding (비동기로 처리)
-        query_vec_raw = await encode_query(user_query)
+        # Query embedding (동기로 처리)
+        query_vec_raw = encode_query(user_query)
         query_vec = np.array(query_vec_raw)
         query_vec = query_vec / np.linalg.norm(query_vec, axis=1, keepdims=True)
 
@@ -100,13 +98,12 @@ async def recommend_classes(request: QueryRequest):
 
         logger.info(f"유사 문서 검색 완료: {time.time() - start_time:.2f}초 소요")
 
-        # OpenAI API 호출 (타임아웃 설정)
-        response = await asyncio.wait_for(
-            openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[{
-                    "role": "user",
-                    "content": f"""당신은 대학 강의 추천 챗봇입니다.
+        # OpenAI API 호출 (동기 방식으로 수정)
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{
+                "role": "user",
+                "content": f"""당신은 대학 강의 추천 챗봇입니다.
 다음 정보를 참고하여 사용자의 질문에 맞는 학과를 3개 추천해 주세요. 
 1.만약 학과 수업이 없다면, 질문 받은 학과와 관련된 수업을 3개 추천해 주세요. 
 2.비서같이 안내하는 문장으로 이야기 하여 주세요.
@@ -120,18 +117,13 @@ async def recommend_classes(request: QueryRequest):
 
 [답변]
 """
-                }],
-                temperature=0.2
-            ),
-            timeout=60.0  # 60초 타임아웃
+            }],
+            temperature=0.2
         )
 
         logger.info(f"총 처리 시간: {time.time() - start_time:.2f}초")
         return {"answer": response['choices'][0]['message']['content']}
 
-    except asyncio.TimeoutError:
-        logger.error("OpenAI API 호출 타임아웃")
-        raise HTTPException(status_code=504, detail="OpenAI API 요청 시간 초과")
     except Exception as e:
         logger.error(f"오류 발생: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
