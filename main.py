@@ -35,7 +35,7 @@ logger.info("모델과 데이터 로딩 시작...")
 start_time = time.time()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(BASE_DIR, "data", "response_reordered_verified.jsonl")
+DATA_PATH = os.path.join(BASE_DIR, "data", "response_reordered_verified_replaced.jsonl")
 
 with open(DATA_PATH, "r", encoding="utf-8") as f:
     data = [json.loads(line) for line in f]
